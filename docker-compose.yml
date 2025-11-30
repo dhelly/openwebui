@@ -1,0 +1,36 @@
+# docker-compose.yml
+services:
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "3000:8080"  # Acesse a interface em http://localhost:3000
+    volumes:
+      - open-webui-data:/app/backend/data
+    environment:
+      - OPENAI_API_KEY=dummy  # Necessário, mas não usado diretamente.
+      - OPENAI_API_BASE_URL=http://litellm:4000/v1  # URL crítica para conectar ao LiteLLM
+    depends_on:
+      - litellm
+    restart: unless-stopped
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm
+    ports:
+      - "4000:4000"  # Porta do proxy LiteLLM
+    command:
+      - '--config=/litellm_config.yaml'
+      - '--detailed_debug'  # Opcional: útil para troubleshooting
+    environment:
+      - LITELLM_MASTER_KEY=sk-1234  # Sua chave mestra para o LiteLLM
+      # Adicione suas chaves de API dos provedores aqui:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - ./litellm_config.yaml:/litellm_config.yaml  # Monta o arquivo de configuração
+    restart: unless-stopped
+
+volumes:
+  open-webui-data:
