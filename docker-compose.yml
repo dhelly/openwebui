@@ -1,36 +1,68 @@
-# docker-compose.yml
+# docker-compose.yml (Versão Postgres Corrigida)
 services:
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
     ports:
-      - "3000:8080"  # Acesse a interface em http://localhost:3000
+      - "3001:8080"
     volumes:
       - open-webui-data:/app/backend/data
     environment:
-      - OPENAI_API_KEY=dummy  # Necessário, mas não usado diretamente.
-      - OPENAI_API_BASE_URL=http://litellm:4000/v1  # URL crítica para conectar ao LiteLLM
+      - OPENAI_API_KEY=dummy
+      - OPENAI_API_BASE_URL=http://litellm:4000/v1
     depends_on:
-      - litellm
+      litellm:
+        condition: service_healthy
     restart: unless-stopped
 
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: litellm
     ports:
-      - "4000:4000"  # Porta do proxy LiteLLM
-    command:
-      - '--config=/litellm_config.yaml'
-      - '--detailed_debug'  # Opcional: útil para troubleshooting
+      - "4000:4000"
     environment:
-      - LITELLM_MASTER_KEY=sk-1234  # Sua chave mestra para o LiteLLM
-      # Adicione suas chaves de API dos provedores aqui:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      - LITELLM_SALT_KEY=${LITELLM_SALT_KEY}
+      - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD}@postgres:5432/litellm
+      - LITELLM_PRISMA_TIMEOUT=60 # <-- NOVA VARIÁVEL: Aumenta o timeout de conexão
+      - STORE_MODEL_IN_DB=True
+      - PORT=4000
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
-      - ./litellm_config.yaml:/litellm_config.yaml  # Monta o arquivo de configuração
+      - ./litellm_config.yaml:/litellm_config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
     restart: unless-stopped
 
+  postgres:
+    image: postgres:15
+    container_name: postgres-litellm
+    environment:
+      - POSTGRES_DB=litellm
+      - POSTGRES_USER=litellm
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF8
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    
 volumes:
   open-webui-data:
+  postgres-data:
