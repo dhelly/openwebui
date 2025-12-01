@@ -20,10 +20,12 @@ services:
     container_name: litellm
     ports:
       - "4000:4000"
+    env_file:
+      - .env # Load local .env file
     environment:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
       - LITELLM_SALT_KEY=${LITELLM_SALT_KEY}
-      - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD}@postgres:5432/litellm
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
       - LITELLM_PRISMA_TIMEOUT=60 # <-- NOVA VARIÁVEL: Aumenta o timeout de conexão
       - STORE_MODEL_IN_DB=True
       - PORT=4000
@@ -31,21 +33,21 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
-      - ./litellm_config.yaml:/litellm_config.yaml:ro
+      - ./litellm_config.yaml:/app/litellm_config.yaml:ro
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 40s
+    healthcheck:  # Defines the health check configuration for the container
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 http://localhost:4000/health/liveliness || exit 1" ]  # Command to execute for health check
+      interval: 30s  # Perform health check every 30 seconds
+      timeout: 10s   # Health check command times out after 10 seconds
+      retries: 3     # Retry up to 3 times if health check fails
+      start_period: 40s  # Wait 40 seconds after container start before beginning health checks
     restart: unless-stopped
 
   postgres:
-    image: postgres:15
-    container_name: postgres-litellm
+    image: postgres:16
+    container_name: litellm_db
     environment:
       - POSTGRES_DB=litellm
       - POSTGRES_USER=litellm
